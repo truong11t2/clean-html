@@ -1,11 +1,12 @@
 ## How to use
 
-go run main.go <input_directory> <category> <tag>
+`go run main.go <input_directory> <category> <tag>`
 
-i.e: go run main.go japan/kyoto/ japan kyoto
+i.e: `go run main.go japan/kyoto/ japan kyoto`
 
 Output:
 
+```
 ---
 
 title: "Title of blog post"
@@ -21,3 +22,5 @@ draft: false
 ---
 
 Content of the blog post...
+
+```
