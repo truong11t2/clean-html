@@ -113,10 +113,33 @@ func formatDirName(name string) string {
 	return strings.Join(words, " ")
 }
 
-func processHTMLFile(inputFile string, category string, tag string) error {
+func checkAndCreateOutputDir(outputDir string) error {
+	// Check if directory exists
+	if _, err := os.Stat(outputDir); os.IsNotExist(err) {
+		// Create directory if it doesn't exist
+		if err := os.MkdirAll(outputDir, 0755); err != nil {
+			return fmt.Errorf("failed to create output directory: %v", err)
+		}
+		return nil
+	}
+
+	// Check if directory is empty
+	entries, err := os.ReadDir(outputDir)
+	if err != nil {
+		return fmt.Errorf("failed to read output directory: %v", err)
+	}
+
+	if len(entries) > 0 {
+		fmt.Printf("Warning: Output directory %s is not empty\n", outputDir)
+	}
+
+	return nil
+}
+
+func processHTMLFile(inputFile string, outputDir string, category string, tag string) error {
 	// Get the parent directory name for the markdown file
 	outputFile := strings.TrimSuffix(inputFile, ".html") + "_processed.html"
-	mdOutputFile := filepath.Base(filepath.Dir(inputFile)) + ".md"
+	mdOutputFile := filepath.Join(outputDir, filepath.Base(filepath.Dir(inputFile))+".md")
 
 	// Read input file
 	content, err := os.ReadFile(inputFile)
@@ -234,23 +257,21 @@ func processHTMLFile(inputFile string, category string, tag string) error {
 }
 
 func main() {
-	if len(os.Args) != 4 {
-		fmt.Println("Usage: go run main.go <input_directory> <category> <tag>")
+	if len(os.Args) != 5 {
+		fmt.Println("Usage: go run main.go <input_directory> <output_directory> <category> <tag>")
 		os.Exit(1)
 	}
 
 	inputDir := os.Args[1]
-	// metadataFile := os.Args[2]
-	category := os.Args[2]
-	tag := os.Args[3]
+	outputDir := os.Args[2]
+	category := os.Args[3]
+	tag := os.Args[4]
 
-	// Read metadata file once
-	// metadataContent, err := os.ReadFile(metadataFile)
-	// if err != nil {
-	// 	fmt.Printf("Error reading metadata file: %v\n", err)
-	// 	os.Exit(1)
-	// }
-	// metadata := string(metadataContent)
+	// Check and create output directory
+	if err := checkAndCreateOutputDir(outputDir); err != nil {
+		fmt.Printf("Error with output directory: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Walk through directory
 	err := filepath.Walk(inputDir, func(path string, info os.FileInfo, err error) error {
@@ -260,7 +281,7 @@ func main() {
 
 		// Process only .html files
 		if !info.IsDir() && strings.HasSuffix(strings.ToLower(path), ".html") {
-			if err := processHTMLFile(path, category, tag); err != nil {
+			if err := processHTMLFile(path, outputDir, category, tag); err != nil {
 				fmt.Printf("Error processing %s: %v\n", path, err)
 			}
 		}
@@ -270,5 +291,13 @@ func main() {
 	if err != nil {
 		fmt.Printf("Error walking directory: %v\n", err)
 		os.Exit(1)
+	}
+
+	// clean processed files
+	fmt.Println("Deleting processed files...")
+	cmd := exec.Command("find", inputDir, "-type", "f", "-name", "*processed*", "-delete")
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("error deleting processed files: %v\n", err)
+		os.Exit(2)
 	}
 }
