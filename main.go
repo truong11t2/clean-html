@@ -137,9 +137,12 @@ func checkAndCreateOutputDir(outputDir string) error {
 }
 
 func processHTMLFile(inputFile string, outputDir string, category string, tag string) error {
-	// Get the parent directory name for the markdown file
+	// Get the HTML file name without extension for the markdown file
+	baseFileName := filepath.Base(inputFile)
+	fileNameWithoutExt := strings.TrimSuffix(baseFileName, filepath.Ext(baseFileName))
+
 	outputFile := strings.TrimSuffix(inputFile, ".html") + "_processed.html"
-	mdOutputFile := filepath.Join(outputDir, filepath.Base(filepath.Dir(inputFile))+".md")
+	mdOutputFile := filepath.Join(outputDir, fileNameWithoutExt+".md")
 
 	// Read input file
 	content, err := os.ReadFile(inputFile)
@@ -196,13 +199,14 @@ func processHTMLFile(inputFile string, outputDir string, category string, tag st
 	}
 
 	var result strings.Builder
-	parentDir := formatDirName(filepath.Base(filepath.Dir(inputFile)))
+	// Use the file name instead of parent directory name
+	title := formatDirName(fileNameWithoutExt)
 
 	// Build metadata
 	result.WriteString("---\n")
-	result.WriteString("title: \"" + parentDir + "\"\n")
-	result.WriteString("description: \"" + parentDir + "\"\n")
-	result.WriteString("meta_title: \"" + parentDir + "\"\n")
+	result.WriteString("title: \"" + title + "\"\n")
+	result.WriteString("description: \"" + title + "\"\n")
+	result.WriteString("meta_title: \"" + title + "\"\n")
 	result.WriteString("author: " + "\"\"" + "\n")
 	result.WriteString("date: " + time.Now().Format("2006-01-02") + "\n")
 	result.WriteString("categories: [\"" + category + "\"]\n")
