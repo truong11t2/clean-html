@@ -61,7 +61,7 @@ func isTargetElement(n *html.Node) bool {
 		}
 		content := getTextContent(n)
 		return !strings.Contains(content, "District Map")
-	case "h1", "h2":
+	case "h1", "h2", "h4", "h5":
 		// Keep heading tags with no class or id
 		return hasNoAttributes(n, []string{"class", "id"})
 	case "div":
@@ -99,6 +99,41 @@ func extractContent(doc *html.Node) []string {
 	}
 	f(doc)
 	return extracted
+}
+
+// Add this new function after extractContent function
+func removeDataSVGImages(content string) string {
+	doc, err := html.Parse(strings.NewReader(content))
+	if err != nil {
+		return content
+	}
+
+	var removeSVG func(*html.Node) bool
+	removeSVG = func(n *html.Node) bool {
+		if n.Type == html.ElementNode && n.Data == "img" {
+			for _, attr := range n.Attr {
+				if attr.Key == "src" && strings.Contains(attr.Val, "data:image/svg+xml") {
+					return true
+				}
+			}
+		}
+
+		c := n.FirstChild
+		for c != nil {
+			next := c.NextSibling
+			if removeSVG(c) {
+				n.RemoveChild(c)
+			}
+			c = next
+		}
+		return false
+	}
+
+	removeSVG(doc)
+
+	var buf bytes.Buffer
+	html.Render(&buf, doc)
+	return buf.String()
 }
 
 func formatDirName(name string) string {
@@ -173,6 +208,9 @@ func processHTMLFile(inputFile string, outputDir string, category string, tag st
 	// Join extracted content
 	contentStr := strings.Join(extractedContent, "\n")
 
+	// Remove SVG data images
+	contentStr = removeDataSVGImages(contentStr)
+
 	// Create final HTML
 	outputHTML := fmt.Sprintf(newHTML, contentStr)
 
@@ -218,6 +256,10 @@ func processHTMLFile(inputFile string, outputDir string, category string, tag st
 	mdText := string(mdContent)
 	// First remove ::
 	mdText = strings.ReplaceAll(mdText, "**::**", "")
+	// Remove .html from the content
+	mdText = strings.ReplaceAll(mdText, ".html", "")
+	// Replace \\n[ with [
+	mdText = strings.ReplaceAll(mdText, "\\\n[", "[")
 	// Remove lines starting with :::
 	lines := strings.Split(mdText, "\n")
 	var filteredLines []string
@@ -228,9 +270,8 @@ func processHTMLFile(inputFile string, outputDir string, category string, tag st
 
 		// Replace link patterns
 		line = strings.ReplaceAll(line, "(../", "(")
-		line = strings.ReplaceAll(line, "/index.html)", ")")
+		line = strings.ReplaceAll(line, "/index)", ")")
 		filteredLines = append(filteredLines, line)
-
 	}
 	mdText = strings.Join(filteredLines, "\n")
 	// Process the entire text as one string
@@ -260,9 +301,43 @@ func processHTMLFile(inputFile string, outputDir string, category string, tag st
 	return nil
 }
 
+// Add this new function
+func replaceChecklistContent(mdFile string, checklistFile string) error {
+	// Read the markdown file
+	content, err := os.ReadFile(mdFile)
+	if err != nil {
+		return fmt.Errorf("error reading markdown file: %v", err)
+	}
+
+	// Read the new checklist content
+	newChecklist, err := os.ReadFile(checklistFile)
+	if err != nil {
+		return fmt.Errorf("error reading checklist file: %v", err)
+	}
+
+	// Find the index of the checklist section
+	mdText := string(content)
+	checklistStart := strings.Index(mdText, "##### Kyoto Vacation Checklist")
+	if checklistStart == -1 {
+		// If checklist not found, return without modification
+		return nil
+	}
+
+	// Keep the content before the checklist and append new checklist
+	newContent := mdText[:checklistStart] + string(newChecklist)
+
+	// Write the modified content back to the file
+	err = os.WriteFile(mdFile, []byte(newContent), 0644)
+	if err != nil {
+		return fmt.Errorf("error writing modified markdown: %v", err)
+	}
+
+	return nil
+}
+
 func main() {
-	if len(os.Args) != 5 {
-		fmt.Println("Usage: go run main.go <input_directory> <output_directory> <category> <tag>")
+	if len(os.Args) != 6 {
+		fmt.Println("Usage: go run main.go <input_directory> <output_directory> <category> <tag> <checklist_file>")
 		os.Exit(1)
 	}
 
@@ -270,6 +345,7 @@ func main() {
 	outputDir := os.Args[2]
 	category := os.Args[3]
 	tag := os.Args[4]
+	checklistFile := os.Args[5]
 
 	// Check and create output directory
 	if err := checkAndCreateOutputDir(outputDir); err != nil {
@@ -294,6 +370,27 @@ func main() {
 
 	if err != nil {
 		fmt.Printf("Error walking directory: %v\n", err)
+		os.Exit(1)
+	}
+
+	// After processing all HTML files, update the checklists in MD files
+	fmt.Println("Updating checklists in markdown files...")
+	err = filepath.Walk(outputDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Process only .md files
+		if !info.IsDir() && strings.HasSuffix(strings.ToLower(path), ".md") {
+			if err := replaceChecklistContent(path, checklistFile); err != nil {
+				fmt.Printf("Error updating checklist in %s: %v\n", path, err)
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		fmt.Printf("Error processing markdown files: %v\n", err)
 		os.Exit(1)
 	}
 
