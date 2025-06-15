@@ -55,20 +55,32 @@ func isTargetElement(n *html.Node) bool {
 		content := getTextContent(n)
 		return !strings.Contains(content, "Copyright")
 	case "h3":
+		//Keep <h3> tags with class checktitle
+		for _, attr := range n.Attr {
+			if attr.Key == "class" && attr.Val == "checktitle" {
+				return true
+			}
+		}
 		// Keep <h3> tags with no class or id and no "Tokyo District Map" in content
 		if !hasNoAttributes(n, []string{"class", "id"}) {
 			return false
 		}
 		content := getTextContent(n)
 		return !strings.Contains(content, "District Map")
-	case "h1", "h2":
+	case "h1", "h2", "h4", "h5":
 		// Keep heading tags with no class or id
 		return hasNoAttributes(n, []string{"class", "id"})
 	case "div":
-		// Check for div with class="photogimg"
+		// Check for div with class="photogimg" and exclude class="checkframe"
 		for _, attr := range n.Attr {
-			if attr.Key == "class" && attr.Val == "photogimg" {
-				return true
+			if attr.Key == "class" {
+				if attr.Val == "photogimg" {
+					return true
+				}
+				if attr.Val == "checkframe" {
+					fmt.Printf("See checkframe element\n")
+					return false
+				}
 			}
 		}
 	}
@@ -83,12 +95,31 @@ func renderNode(n *html.Node) string {
 	return buf.String()
 }
 
+// hasCheckframeParent checks if any parent node has class="checkframe"
+func hasCheckframeParent(n *html.Node) bool {
+	for parent := n.Parent; parent != nil; parent = parent.Parent {
+		if parent.Type == html.ElementNode && parent.Data == "div" {
+			for _, attr := range parent.Attr {
+				if attr.Key == "class" && attr.Val == "checkframe" {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // extractContent processes the HTML and returns extracted content
 func extractContent(doc *html.Node) []string {
 	var extracted []string
 	var f func(*html.Node)
 
 	f = func(n *html.Node) {
+		// Skip if node or any of its parents has class="checkframe"
+		if hasCheckframeParent(n) {
+			return
+		}
+
 		if isTargetElement(n) {
 			extracted = append(extracted, renderNode(n))
 		} else {
@@ -99,6 +130,41 @@ func extractContent(doc *html.Node) []string {
 	}
 	f(doc)
 	return extracted
+}
+
+// Add this new function after extractContent functionAdd commentMore actions
+func removeDataSVGImages(content string) string {
+	doc, err := html.Parse(strings.NewReader(content))
+	if err != nil {
+		return content
+	}
+
+	var removeSVG func(*html.Node) bool
+	removeSVG = func(n *html.Node) bool {
+		if n.Type == html.ElementNode && n.Data == "img" {
+			for _, attr := range n.Attr {
+				if attr.Key == "src" && strings.Contains(attr.Val, "data:image/svg+xml") {
+					return true
+				}
+			}
+		}
+
+		c := n.FirstChild
+		for c != nil {
+			next := c.NextSibling
+			if removeSVG(c) {
+				n.RemoveChild(c)
+			}
+			c = next
+		}
+		return false
+	}
+
+	removeSVG(doc)
+
+	var buf bytes.Buffer
+	html.Render(&buf, doc)
+	return buf.String()
 }
 
 func formatDirName(name string) string {
@@ -136,10 +202,25 @@ func checkAndCreateOutputDir(outputDir string) error {
 	return nil
 }
 
+// removeEmptyHTMLComments removes empty HTML comments from markdown content
+func removeEmptyHTMLComments(content string) string {
+	// Remove <!-- --> patterns
+	content = strings.ReplaceAll(content, "<!-- -->", "")
+	// Remove any remaining empty lines that might be left after removing comments
+	lines := strings.Split(content, "\n")
+	var filteredLines []string
+	for _, line := range lines {
+		if strings.TrimSpace(line) != "" {
+			filteredLines = append(filteredLines, line)
+		}
+	}
+	return strings.Join(filteredLines, "\n")
+}
+
 func processHTMLFile(inputFile string, outputDir string, category string, tag string) error {
 	// Get the parent directory name for the markdown file
 	outputFile := strings.TrimSuffix(inputFile, ".html") + "_processed.html"
-	mdOutputFile := filepath.Join(outputDir, filepath.Base(filepath.Dir(inputFile))+".md")
+	mdOutputFile := filepath.Join(outputDir, filepath.Base(filepath.Dir(inputFile))+".mdx")
 
 	// Read input file
 	content, err := os.ReadFile(inputFile)
@@ -169,6 +250,9 @@ func processHTMLFile(inputFile string, outputDir string, category string, tag st
 
 	// Join extracted content
 	contentStr := strings.Join(extractedContent, "\n")
+
+	// Remove SVG data images
+	contentStr = removeDataSVGImages(contentStr)
 
 	// Create final HTML
 	outputHTML := fmt.Sprintf(newHTML, contentStr)
@@ -206,6 +290,7 @@ func processHTMLFile(inputFile string, outputDir string, category string, tag st
 	result.WriteString("author: " + "\"\"" + "\n")
 	result.WriteString("date: " + time.Now().Format("2006-01-02") + "\n")
 	result.WriteString("categories: [\"" + category + "\"]\n")
+	result.WriteString("sub_categories: [\"" + "\"]\n")
 	result.WriteString("image: " + "\"\"" + "\n")
 	result.WriteString("tags: [\"" + tag + "\"]\n")
 	result.WriteString("draft: " + "false" + "\n")
@@ -214,6 +299,12 @@ func processHTMLFile(inputFile string, outputDir string, category string, tag st
 	mdText := string(mdContent)
 	// First remove ::
 	mdText = strings.ReplaceAll(mdText, "**::**", "")
+	// Remove .html from the content
+	mdText = strings.ReplaceAll(mdText, ".html", "")
+	// Replace \\n[ with [
+	mdText = strings.ReplaceAll(mdText, "\\\n[", "[")	
+	// Replace \n\n[ with \n[
+		mdText = strings.ReplaceAll(mdText, "\n\n[", "\n[")
 	// Remove lines starting with :::
 	lines := strings.Split(mdText, "\n")
 	var filteredLines []string
@@ -224,11 +315,14 @@ func processHTMLFile(inputFile string, outputDir string, category string, tag st
 
 		// Replace link patterns
 		line = strings.ReplaceAll(line, "(../", "(")
-		line = strings.ReplaceAll(line, "/index.html)", ")")
+		line = strings.ReplaceAll(line, "/index)", ")")
 		filteredLines = append(filteredLines, line)
-
 	}
 	mdText = strings.Join(filteredLines, "\n")
+	
+	// Remove empty HTML comments
+	// mdText = removeEmptyHTMLComments(mdText)
+
 	// Process the entire text as one string
 	for i := 0; i < len(string(mdText)); i++ {
 		if string(mdText)[i] == '{' {
@@ -256,9 +350,35 @@ func processHTMLFile(inputFile string, outputDir string, category string, tag st
 	return nil
 }
 
+// Add this new functionAdd commentMore actions
+func addChecklistContent(mdFile string, checklistFile string) error {
+	// Read the markdown file
+	content, err := os.ReadFile(mdFile)
+	if err != nil {
+		return fmt.Errorf("error reading markdown file: %v", err)
+	}
+
+	// Read the new checklist content
+	newChecklist, err := os.ReadFile(checklistFile)
+	if err != nil {
+		return fmt.Errorf("error reading checklist file: %v", err)
+	}
+
+	// Append new checklist content to the end of the file
+	newContent := string(content) + "\n\n" + string(newChecklist)
+
+	// Write the modified content back to the file
+	err = os.WriteFile(mdFile, []byte(newContent), 0644)
+	if err != nil {
+		return fmt.Errorf("error writing modified markdown: %v", err)
+	}
+
+	return nil
+}
+
 func main() {
-	if len(os.Args) != 5 {
-		fmt.Println("Usage: go run main.go <input_directory> <output_directory> <category> <tag>")
+	if len(os.Args) != 6 {
+		fmt.Println("Usage: go run main.go <input_directory> <output_directory> <category> <tag> <checklist_file>")
 		os.Exit(1)
 	}
 
@@ -266,6 +386,7 @@ func main() {
 	outputDir := os.Args[2]
 	category := os.Args[3]
 	tag := os.Args[4]
+	checklistFile := os.Args[5]
 
 	// Check and create output directory
 	if err := checkAndCreateOutputDir(outputDir); err != nil {
@@ -290,6 +411,27 @@ func main() {
 
 	if err != nil {
 		fmt.Printf("Error walking directory: %v\n", err)
+		os.Exit(1)
+	}
+
+	// After processing all HTML files, add the checklists to MD files
+	fmt.Println("Adding checklists to markdown files...")
+	err = filepath.Walk(outputDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Process only .mdx files
+		if !info.IsDir() && strings.HasSuffix(strings.ToLower(path), ".mdx") {
+			if err := addChecklistContent(path, checklistFile); err != nil {
+				fmt.Printf("Error adding checklist to %s: %v\n", path, err)
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		fmt.Printf("Error processing markdown files: %v\n", err)
 		os.Exit(1)
 	}
 
