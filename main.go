@@ -290,7 +290,7 @@ func processHTMLFile(inputFile string, outputDir string, category string, tag st
 	result.WriteString("author: " + "\"\"" + "\n")
 	result.WriteString("date: " + time.Now().Format("2006-01-02") + "\n")
 	result.WriteString("categories: [\"" + category + "\"]\n")
-	result.WriteString("sub_categories: [\"" + "\"]\n")
+	// result.WriteString("sub_categories: [\"" + "\"]\n")
 	result.WriteString("image: " + "\"\"" + "\n")
 	result.WriteString("tags: [\"" + tag + "\"]\n")
 	result.WriteString("draft: " + "false" + "\n")
@@ -300,7 +300,7 @@ func processHTMLFile(inputFile string, outputDir string, category string, tag st
 	// First remove ::
 	mdText = strings.ReplaceAll(mdText, "**::**", "")
 	// Remove .html from the content
-	mdText = strings.ReplaceAll(mdText, ".html", "")
+	//mdText = strings.ReplaceAll(mdText, ".html", "")
 	// Replace \\n[ with [
 	mdText = strings.ReplaceAll(mdText, "\\\n[", "[")	
 	// Replace \n\n[ with \n[
@@ -315,7 +315,7 @@ func processHTMLFile(inputFile string, outputDir string, category string, tag st
 
 		// Replace link patterns
 		line = strings.ReplaceAll(line, "(../", "(")
-		line = strings.ReplaceAll(line, "/index)", ")")
+		line = strings.ReplaceAll(line, "/index.html)", ")")
 		filteredLines = append(filteredLines, line)
 	}
 	mdText = strings.Join(filteredLines, "\n")
