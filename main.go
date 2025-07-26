@@ -281,19 +281,21 @@ func processHTMLFile(inputFile string, outputDir string, category string, tag st
 
 	var result strings.Builder
 	parentDir := formatDirName(filepath.Base(filepath.Dir(inputFile)))
+	postId := strings.ToLower(strings.ReplaceAll(parentDir, " ", "-"))
 
 	// Build metadata
 	result.WriteString("---\n")
+	result.WriteString("id: " + "\"" + postId + "\"\n")
 	result.WriteString("title: \"" + parentDir + "\"\n")
-	result.WriteString("description: \"" + parentDir + "\"\n")
-	result.WriteString("meta_title: \"" + parentDir + "\"\n")
-	result.WriteString("author: " + "\"\"" + "\n")
 	result.WriteString("date: " + time.Now().Format("2006-01-02") + "\n")
-	result.WriteString("categories: [\"" + category + "\"]\n")
-	// result.WriteString("sub_categories: [\"" + "\"]\n")
-	result.WriteString("image: " + "\"\"" + "\n")
+	result.WriteString("lastmod: " + time.Now().Format("2006-01-02") + "\n")
+	result.WriteString("language: " + "vi" + "\n")
+	result.WriteString("authors: " + "[truong]" + "\n")
 	result.WriteString("tags: [\"" + tag + "\"]\n")
 	result.WriteString("draft: " + "false" + "\n")
+	result.WriteString("summary: " + "\"\"" + "\n")
+	result.WriteString("images: [\"" + "" + "\"]\n")
+	result.WriteString("layout: " + "PostLayout" + "\n")
 	result.WriteString("---\n\n")
 
 	mdText := string(mdContent)
@@ -302,9 +304,9 @@ func processHTMLFile(inputFile string, outputDir string, category string, tag st
 	// Remove .html from the content
 	//mdText = strings.ReplaceAll(mdText, ".html", "")
 	// Replace \\n[ with [
-	mdText = strings.ReplaceAll(mdText, "\\\n[", "[")	
+	mdText = strings.ReplaceAll(mdText, "\\\n[", "[")
 	// Replace \n\n[ with \n[
-		mdText = strings.ReplaceAll(mdText, "\n\n[", "\n[")
+	mdText = strings.ReplaceAll(mdText, "\n\n[", "\n[")
 	// Remove lines starting with :::
 	lines := strings.Split(mdText, "\n")
 	var filteredLines []string
@@ -319,7 +321,7 @@ func processHTMLFile(inputFile string, outputDir string, category string, tag st
 		filteredLines = append(filteredLines, line)
 	}
 	mdText = strings.Join(filteredLines, "\n")
-	
+
 	// Remove empty HTML comments
 	// mdText = removeEmptyHTMLComments(mdText)
 
